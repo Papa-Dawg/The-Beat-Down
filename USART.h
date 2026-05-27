@@ -1,0 +1,27 @@
+//======================================================================================================================
+// Title:       USART.h
+// Author:      nathan ramos
+// Created:     5/15/2026
+// Description: Header file for USART module.
+//======================================================================================================================
+
+#ifndef USART_H_
+#define USART_H_
+
+//======================================================================================================================
+//                                                    Libraries
+//======================================================================================================================
+#include <stdint.h>
+#include <avr/pgmspace.h>
+
+//======================================================================================================================
+//                                                   Functions
+//======================================================================================================================
+void USART_Init(unsigned int ubrr);
+void USART_Transmit(unsigned char data);
+void USART_TransmitStr(const char *str);
+void USART_TransmitStr_P(const char *str);
+unsigned char USART_Receive(void);
+void USART_TransmitLine (const char *str1, char separator, const char *str2);
+
+#endif /* USART_H_ */

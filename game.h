@@ -1,0 +1,67 @@
+#ifndef GAME_H_
+#define GAME_H_
+
+#include <avr/io.h>
+#include <stdint.h>
+#include <util/atomic.h>
+
+//======================================================================================================================
+//                                                     Types
+//======================================================================================================================
+typedef enum { RUNNING, WAITING, PAUSED } GameStage;
+
+typedef struct {
+	char     initials[4];
+	uint32_t score;
+} HighScore;
+
+typedef struct {
+	uint16_t delta_and_lane; // Lower 14 bits = relative delta time, Upper 2 bits = lane (0-2)
+} Beat;
+
+//======================================================================================================================
+//                                                   Definitions
+//======================================================================================================================
+#define COMBO_THRESHOLD    10
+#define BAUD               115200
+#define MYUBRR             (F_CPU/8/BAUD-1)
+#define MAX_BEATS          575
+#define LED_DDR            DDRD |= (1<<DDD6)
+#define LED_DDR_RED        DDRD |= (1<<DDD7)
+#define BLUE_ON            PORTD |= (1<<PORTD6)
+#define BLUE_OFF           PORTD &= ~(1<<PORTD6)
+#define RED_ON             PORTD |= (1<<PORTD7)
+#define RED_OFF            PORTD &= ~(1<<PORTD7)
+#define SCROLL_TIME        800    // ms for a beat to travel from top to bottom
+#define TICK_INTERVAL      100    // ms between each scroll step (8 rows * 100ms = 800ms)
+//======================================================================================================================
+//                                               Global Variables
+//======================================================================================================================
+extern volatile GameStage stage;
+extern volatile uint8_t   combo;
+extern volatile uint8_t   multiplier;
+extern volatile uint8_t   power_up_ready;
+extern volatile uint8_t   game_over;
+extern volatile uint8_t   high_score_achieved;
+extern volatile uint32_t  response_time;
+extern volatile uint32_t  high_score;
+extern volatile uint32_t  current_score;
+extern volatile uint8_t   current_lane;
+extern volatile uint32_t  beat_start_ms;
+extern char               high_score_initials[4];
+extern HighScore          top_scores[10];
+extern uint16_t           beat_count;
+extern uint8_t            game_screen[8][3];
+//======================================================================================================================
+//                                                   Functions
+//======================================================================================================================
+void setup(void);
+void mainMenu(void);
+void startGame(void);
+void gameOver(void);
+void measuring(void);
+void recordBeats(void);
+void transmitBeatMap(void);
+void receiveBeatMap(void);
+
+#endif /* GAME_H_ */
