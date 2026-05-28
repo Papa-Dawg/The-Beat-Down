@@ -22,12 +22,14 @@
 //======================================================================================================================
 //                                                   Functions
 //======================================================================================================================
-void displayStartMessage(void);
+//void displayStartMessage(void);
 void displayMainMenu(void);
 void displayExitMessage(void);
 void displayHighScores(void);
 void displayDifficulty(uint16_t pot_value);
 void displayGameScreen(uint8_t objects_matrix[8][3]);
 void displayGameOver(uint32_t final_score, uint8_t is_new_high_score);
+void saveHighScores (void);
+void loadHighScores (void);
 
 #endif /* DISPLAY_H_ */

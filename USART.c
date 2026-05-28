@@ -58,6 +58,14 @@ void USART_TransmitStr_P (const char *str)
     USART_Transmit('\n');                     //newline for readability.
 }
 
+void USART_TransmitNoAdd(const char *s)
+{
+	while (*s)
+	{
+		USART_Transmit(*s++);
+	}
+}
+
 unsigned char USART_Receive (void)
 {
     while (!(UCSR0A & (1<<RXC0)));            //waits for data to arrive.

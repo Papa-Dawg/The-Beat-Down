@@ -34,6 +34,7 @@ volatile GameStage stage          = RUNNING;
 volatile uint8_t   combo          = 0;
 volatile uint8_t   multiplier     = 1;
 volatile uint8_t   power_up_ready = 0;
+volatile uint8_t   power_up_active= 0;
 volatile uint8_t   game_over      = 0;
 volatile uint8_t   high_score_achieved = 0;
 volatile uint32_t  response_time  = 0;
@@ -42,7 +43,7 @@ volatile uint32_t  current_score  = 0;
 volatile uint8_t   current_lane   = 0xFF;
 volatile uint32_t  beat_start_ms  = 0;
 char               high_score_initials[4] = "---";
-HighScore          top_scores[10];
+HighScore          top_scores[9];
 uint16_t           beat_count     = 0;
 uint8_t            game_screen[8][3];                 // 8 rows, 3 lanes
 //======================================================================================================================
@@ -63,8 +64,9 @@ void setup (void)
 	button_init();
 	timer_init();
 	ADC_init();
+	tilt_init();
 	
-	for (uint8_t i = 0; i < 10; i++)
+	for (uint8_t i = 0; i < 9; i++)
 	{
 		top_scores[i].score = 0;
 
@@ -81,9 +83,12 @@ void setup (void)
 	LED_DDR;
 	LED_DDR_RED;
 	
+	loadHighScores();
 	receiveBeatMap();
 
-	displayStartMessage();
+	//displayStartMessage();
+	
+	waitForEnter();
 
 	lcd_putcmd(LCD_SET_CURSOR | FIRST_ROW);
 	lcd_puts((uint8_t *)" The Beat Down! ");
@@ -92,25 +97,94 @@ void setup (void)
 	lcd_puts((uint8_t *)"Press to start! ");
 }
 
-void mainMenu (void)
+void mainMenu(void)
 {
 	displayMainMenu();
 
+	uint8_t lastDifficulty = 255;
+
 	while (1)
 	{
-		char choice = USART_Receive();
+		// =========================================
+		// Read potentiometer continuously
+		// =========================================
 
-		switch (choice)
+		uint16_t adc = ADC_read(POT_CHANNEL);
+
+		uint8_t difficulty;
+
+		if (adc < 342)
 		{
-			case '1': startGame();                    return;
-			case '2': displayHighScores();            return;
-			case '3': displayDifficulty(ADC_read(0)); return;
-			case '4': displayExitMessage();           return;
-			case '5': recordBeats();                  return;
-			default:
-			USART_TransmitStr_P(PSTR("Invalid option. Try again."));
-			break;
+			difficulty = 0; // EASY
 		}
+		else if (adc < 683)
+		{
+			difficulty = 1; // MEDIUM
+		}
+		else
+		{
+			difficulty = 2; // HARD
+		}
+
+		// Only transmit when changed
+		if (difficulty != lastDifficulty)
+		{
+			lastDifficulty = difficulty;
+
+			switch (difficulty)
+			{
+				case 0:
+				USART_TransmitStr("DIFFICULTY:EASY");
+				break;
+
+				case 1:
+				USART_TransmitStr("DIFFICULTY:MEDIUM");
+				break;
+
+				case 2:
+				USART_TransmitStr("DIFFICULTY:HARD");
+				break;
+			}
+		}
+
+		// =========================================
+		// Non-blocking serial input
+		// =========================================
+
+		if (UCSR0A & (1 << RXC0))
+		{
+			char choice = UDR0;
+
+			switch (choice)
+			{
+				case '1':
+				startGame();
+				return;
+
+				case '2':
+				game_over = 0;
+				high_score_achieved = 0;
+				displayHighScores();
+				waitForEnter();
+				displayMainMenu();
+				break;
+
+				case '3':
+				recordBeats();
+				return;
+				
+				case '4':
+				sensorDebug();
+				displayMainMenu();
+				return;
+
+				case '5':
+				displayExitMessage();
+				return;
+			}
+		}
+
+		_delay_ms(50);
 	}
 }
 
@@ -165,12 +239,17 @@ void startGame (void)
 	uint32_t hit_timeline   = 0;
 	uint32_t spawn_timeline = 0;
 
-	while (beat_index < beat_count && game_over == 0)
+	//while (beat_index < beat_count && game_over == 0)
+	while ((beat_index < beat_count || stage == WAITING) && !game_over)
 	{
+		checkLight();
+
 		if (stage == PAUSED)
 		{
 			continue;
 		}
+		
+		checkTilt();
 
 		uint32_t current_ms;
 
@@ -178,40 +257,112 @@ void startGame (void)
 		current_ms = ms_counter;
 		sei();
 		
-		if (stage == WAITING)
+		//==================================================
+		// INPUT HANDLING
+		//==================================================
+		if (left_button_pressed || middle_button_pressed || right_button_pressed)
 		{
-			if ((left_button_pressed   && current_lane == 0) ||
-			(middle_button_pressed && current_lane == 1) ||
-			(right_button_pressed  && current_lane == 2))
-			{
-				measuring();
-			}
-			else if (left_button_pressed ||
-			middle_button_pressed ||
-			right_button_pressed)
-			{
-				// WRONG BUTTON
+			uint8_t pressed_lane = 0xFF;
 
+			// CONSUME the button immediately
+			if (left_button_pressed)
+			{
+				pressed_lane = 0;
+				left_button_pressed = 0;
+			}
+			else if (middle_button_pressed)
+			{
+				pressed_lane = 1;
+				middle_button_pressed = 0;
+			}
+			else if (right_button_pressed)
+			{
+				pressed_lane = 2;
+				right_button_pressed = 0;
+			}
+
+			//==================================================
+			// VALID HIT WINDOW
+			//==================================================
+			if (stage == WAITING)
+			{
+				if (pressed_lane == current_lane)
+				{
+					measuring();
+				}
+				else
+				{
+					// WRONG LANE HIT
+					combo           = 0;
+					multiplier      = 1;
+					power_up_ready  = 0;
+					power_up_active = 0;
+
+					char score_buf[16];
+					char combo_buf[8];
+					char mult_buf[8];
+
+					ltoa(current_score, score_buf, 10);
+					itoa(combo, combo_buf, 10);
+					itoa(multiplier, mult_buf, 10);
+
+					USART_TransmitNoAdd("HUD:");
+					USART_TransmitNoAdd(score_buf);
+					USART_Transmit(',');
+					USART_TransmitNoAdd(combo_buf);
+					USART_Transmit(',');
+					USART_TransmitNoAdd(mult_buf);
+					USART_Transmit('\n');
+
+					RED_ON;
+					BLUE_OFF;
+
+					if (current_lane < 3)
+					{
+						game_screen[7][current_lane] = 0;
+					}
+
+					TCCR1B &= ~((1<<CS12) | (1<<CS10));
+					TCNT1 = 0;
+					stage = RUNNING;
+
+					//USART_TransmitStr_P(PSTR("STATUS:WRONG LANE"));
+				}
+			}
+			
+			/*
+			//==================================================
+			// EARLY / SPAM INPUT
+			//==================================================
+			else
+			{
 				combo = 0;
 				multiplier = 1;
 				power_up_ready = 0;
 
+				char score_buf[16];
+				char combo_buf[8];
+				char mult_buf[8];
+
+				ltoa(current_score, score_buf, 10);
+				itoa(combo, combo_buf, 10);
+				itoa(multiplier, mult_buf, 10);
+
+				USART_TransmitNoAdd("HUD:");
+				USART_TransmitNoAdd(score_buf);
+				USART_Transmit(',');
+				USART_TransmitNoAdd(combo_buf);
+				USART_Transmit(',');
+				USART_TransmitNoAdd(mult_buf);
+				USART_Transmit('\n');
+
 				RED_ON;
 				BLUE_OFF;
 
-				TCCR1B = 0;
-				TCNT1 = 0;
-
-				stage = RUNNING;
-
-				USART_TransmitStr_P(PSTR("WRONG"));
+				USART_TransmitStr_P(PSTR("STATUS:EARLY/SPAM"));
 			}
-
-			left_button_pressed   = 0;
-			middle_button_pressed = 0;
-			right_button_pressed  = 0;
+			*/
 		}
-
 
 		//==================================================
 		// SCROLL DISPLAY
@@ -269,41 +420,36 @@ void startGame (void)
 		}
 
 		//==================================================
-		// HIT WINDOW
+		// HIT WINDOW TRIGGER
 		//==================================================
 		if (beat_index < beat_count)
 		{
-			uint16_t packed =
-			beat_map[beat_index].delta_and_lane;
+			uint16_t packed = beat_map[beat_index].delta_and_lane;
+			uint32_t delta = (packed & 0x3FFF);
+			uint8_t lane = (uint8_t)((packed >> 14) & 0x03);
+			uint32_t target_time = hit_timeline + delta;
 
-			uint32_t delta =
-			(packed & 0x3FFF);
+			// Calculate your dynamic window based on the potentiometer
+			//uint16_t window = ADC_read(POT_CHANNEL) * 40 / 1023 + 50;
+			
+			uint16_t window = getTimingWindow();
 
-			uint8_t lane =
-			(uint8_t)((packed >> 14) & 0x03);
-
-			uint32_t target_time =
-			hit_timeline + delta;
-
-			if (stage != WAITING && current_ms >= target_time)
+			// Open the hit window early!
+			if (stage != WAITING && (current_ms + window) >= target_time)
 			{
 				current_lane = lane;
-				
 				stage = WAITING;
 				
-				beat_start_ms = current_ms;
+				// Set the reference point to the ACTUAL target, not current_ms
+				beat_start_ms = target_time;
 
 				BLUE_ON;
-
 				itoa(lane, game_conversion_buf, 10);
-				USART_TransmitLine("BEAT", ':', game_conversion_buf);
+				//USART_TransmitLine("STATUS:BEAT", ':', game_conversion_buf);
 
 				TCNT1 = 0;
-
 				TCCR1B |= (1<<CS12) | (1<<CS10);
-
 				hit_timeline = target_time;
-
 				beat_index++;
 			}
 		}
@@ -312,29 +458,45 @@ void startGame (void)
 		{
 			uint16_t ticks = TCNT1;
 
-			uint32_t elapsed_ms =
-			((uint32_t)ticks * 64UL) / 16000UL;
+			// Convert Timer1 ticks to elapsed milliseconds since the window opened
+			uint32_t elapsed_ms = ((uint32_t)ticks * 64UL) / 16000UL;
 
-			uint16_t window =
-			ADC_read(POT_CHANNEL) * 200 / 1023 + 50;
+			uint16_t window = ADC_read(POT_CHANNEL) * 40 / 1023 + 50;
 
-			if (elapsed_ms > window)
+			// The window spans from (-window) to (+window), so the total duration is window * 2
+			if (elapsed_ms > (uint32_t)(window * 2))
 			{
 				// MISS
-
-				TCCR1B &= ~((1<<CS12) | (1<<CS10));
+				TCCR1B &= ~((1<<CS12) | (1<<CS10)); // Stop Timer1
 				TCNT1 = 0;
 
-				combo = 0;
-				multiplier = 1;
-				power_up_ready = 0;
+				combo           = 0;
+				multiplier      = 1;
+				power_up_ready  = 0;
+				power_up_active = 0;
+				
+				char score_buf[16];
+				char combo_buf[8];
+				char mult_buf[8];
+
+				ltoa(current_score, score_buf, 10);
+				itoa(combo, combo_buf, 10);
+				itoa(multiplier, mult_buf, 10);
+
+				USART_TransmitNoAdd("HUD:");
+				USART_TransmitNoAdd(score_buf);
+				USART_Transmit(',');
+				USART_TransmitNoAdd(combo_buf);
+				USART_Transmit(',');
+				USART_TransmitNoAdd(mult_buf);
+				USART_Transmit('\n');
 
 				RED_ON;
 				BLUE_OFF;
 
 				stage = RUNNING;
 
-				USART_TransmitStr_P(PSTR("MISS"));
+				//USART_TransmitStr_P(PSTR("STATUS:MISS"));
 			}
 		}
 	}
@@ -344,144 +506,7 @@ void startGame (void)
 	gameOver();
 }
 
-/*
-void startGame (void)
-{
-	if (beat_count == 0)
-	{
-		USART_TransmitStr_P(PSTR("No beat map loaded. Record one first (option 5)."));
-		mainMenu();
-		return;
-	}
-
-	combo      = 0;
-	multiplier = 1;
-	game_over  = 0;
-	stage      = RUNNING;
-
-	lcd_putcmd(LCD_CLEAR);
-	lcd_putcmd(LCD_SET_CURSOR | FIRST_ROW);
-	lcd_puts((uint8_t *)"    Ready...    ");
-	_delay_ms(1000);
-
-	lcd_putcmd(LCD_SET_CURSOR | FIRST_ROW);
-	lcd_puts((uint8_t *)"  3... 2... 1.. ");
-	_delay_ms(1000);
-
-	lcd_putcmd(LCD_CLEAR);
-	lcd_putcmd(LCD_SET_CURSOR | FIRST_ROW);
-	lcd_puts((uint8_t *)"  GO! GO! GO!   ");
-
-	// Clear the global game screen buffer
-	for (uint8_t r = 0; r < 8; r++)
-	{
-		game_screen[r][0] = 0;
-		game_screen[r][1] = 0;
-		game_screen[r][2] = 0;
-	}
-
-	USART_TransmitStr_P(PSTR("START"));
-	
-	ms_counter             = 0;
-	uint16_t beat_index    = 0;          // tracks which beat to trigger at bottom
-	uint16_t spawn_index   = 0;          // tracks which beat to spawn at top
-	uint32_t last_tick     = 0;          // tracks last scroll tick
-	uint32_t target_ms     = 0;          // absolute ms of next beat to trigger at bottom
-	uint32_t abs_target_ms = 0;
-	
-	// Dynamic tracking variables to replace the broken 2.8KB array
-	uint32_t running_spawn_total = 0;
-	//uint32_t next_spawn_ms = 0;
-
-	// Initialize targets using the first beat
-	if (beat_count > 0)
-	{
-		abs_target_ms       = beat_map[0].delta_and_lane & 0x3FFF;
-		target_ms           = abs_target_ms;
-		running_spawn_total = 0;
-		
-		// Spawning happens SCROLL_TIME (800ms) before hitting the bottom
-		//next_spawn_ms = (running_spawn_total > SCROLL_TIME) ? (running_spawn_total - SCROLL_TIME) : 0;
-	}
-
-	while (beat_index < beat_count && game_over == 0)
-	{
-		//checkLight();
-		//checkTilt();
-
-		if (stage == PAUSED) continue;
-
-		// Scroll screen every TICK_INTERVAL ms (100ms)
-		if (ms_counter - last_tick >= TICK_INTERVAL)
-		{
-			last_tick = ms_counter; //last_tick += TICK_INTERVAL;
-
-			// Shift rows down from row 7 down to row 1
-			for (int8_t r = 7; r > 0; r--)
-			{
-				game_screen[r][0] = game_screen[r-1][0];
-				game_screen[r][1] = game_screen[r-1][1];
-				game_screen[r][2] = game_screen[r-1][2];
-			}
-
-			// Clear the top row so it can receive new spawns
-			game_screen[0][0] = 0;
-			game_screen[0][1] = 0;
-			game_screen[0][2] = 0;
-
-			while (spawn_index < beat_count)
-			{
-				// Calculate what the absolute timestamp of this note actually is
-				uint32_t next_note_absolute_ms = running_spawn_total + (beat_map[spawn_index].delta_and_lane & 0x3FFF);
-
-				// Is this note scheduled to hit the bottom within our 800ms lookahead window?
-				if ((ms_counter + SCROLL_TIME) >= next_note_absolute_ms)
-				{
-					uint8_t lane = (beat_map[spawn_index].delta_and_lane >> 14) & 0x03;
-					game_screen[0][lane] = 1; // Drop it on the top row!
-					
-					// Lock in this delta to our absolute timeline progress
-					running_spawn_total = next_note_absolute_ms;
-					spawn_index++;
-				}
-				else
-				{
-					// The next note is too far in the future! Stop checking for this frame.
-					break;
-				}
-			}
-			// Redraw the screen over USART to your Python console terminal
-			displayGameScreen(game_screen);
-		}
-
-		// Trigger beat hit window when beat reaches bottom
-		if (ms_counter >= target_ms)
-		{
-			BLUE_ON;
-
-			uint8_t lane = (beat_map[beat_index].delta_and_lane >> 14) & 0x03;
-			itoa(lane, game_conversion_buf, 10);
-			USART_TransmitLine("BEAT", ':', game_conversion_buf);
-
-			TCNT1 = 0;
-			TCCR1B |= (1<<CS12)|(1<<CS10);     // start hit response window timer
-
-			beat_index++;
-
-			// Track absolute target time for the next beat hit window
-			if (beat_index < beat_count)
-			{
-				abs_target_ms += (beat_map[beat_index].delta_and_lane & 0x3FFF);
-				target_ms = abs_target_ms;
-			}
-		}
-	}
-
-	game_over = 1;
-}
-*/
-
-void measuring (void)
+void measuring(void)
 {
 	uint32_t current_ms;
 
@@ -489,8 +514,8 @@ void measuring (void)
 	current_ms = ms_counter;
 	sei();
 	
-	int32_t offset =
-	(int32_t)current_ms - (int32_t)beat_start_ms;
+	// Calculate how far off the button press was from the absolute target beat point
+	int32_t offset = (int32_t)current_ms - (int32_t)beat_start_ms;
 
 	if (offset < 0)
 	{
@@ -499,25 +524,83 @@ void measuring (void)
 
 	response_time = (uint32_t)offset;
 
-	//response_time = current_ms - beat_start_ms;
+	// Safely scale the lookahead window to a max of 90ms (Option A)
+	// This prevents the hit window from opening while the note is visually in Row 6
+	//uint16_t window = ADC_read(POT_CHANNEL) * 40 / 1023 + 50;  //50ms - 90ms window
 	
-	//uint16_t ticks = TCNT1;
+	uint16_t window = getTimingWindow();
 
-	//TCCR1B &= ~((1<<CS12)|(1<<CS10));             //stop Timer1.
-	//TCNT1 = 0;                                    //reset timer.
-
-	//response_time = ((uint32_t)ticks * 1000UL) / 15625UL;  //convert ticks to ms.
-
-	uint16_t window = ADC_read(POT_CHANNEL) * 200 / 1023 + 50;  //50-250ms window.
-
-	if (response_time <= window)                   //hit within window:
+	if (response_time <= window) // Valid hit within the target row window!
 	{
+		// Calculate a clean accuracy percentage (higher percentage = closer to 0ms offset)
 		uint8_t accuracy = 100 - (uint8_t)(response_time * 100 / window);
-		current_score += (accuracy * multiplier);     //add to score.
+		current_score += (accuracy * multiplier);     // Increment score
 
 		combo++;
-		BLUE_ON;
+		
+		if (combo >= 30)
+		{
+			multiplier = 4;
+			
+			if (combo >= 30 && power_up_active)
+			{
+				multiplier = 8;
+			}
+		}
+		else if (combo >= 20)
+		{
+			multiplier = 3;
+			
+			if (combo >= 20 && power_up_active)
+			{
+				multiplier = 6;
+			}
+		}
+		else if (combo >= 10)
+		{
+			multiplier = 2;
+			
+			if (combo >= 10 && power_up_active)
+			{
+				multiplier = 4;
+			}
+		}
+		else
+		{
+			multiplier = 1;
+			
+			if (power_up_active)
+			{
+				multiplier = 2;
+			}
+			
+		}
+		
+		//==================================================
+		// SEND HUD UPDATE TO PYTHON
+		//==================================================
+
+		char score_buf[16];
+		char combo_buf[8];
+		char mult_buf[8];
+
+		ltoa(current_score, score_buf, 10);
+		itoa(combo, combo_buf, 10);
+		itoa(multiplier, mult_buf, 10);
+
+		USART_TransmitNoAdd("HUD:");
+		USART_TransmitNoAdd(score_buf);
+		USART_Transmit(',');
+		USART_TransmitNoAdd(combo_buf);
+		USART_Transmit(',');
+		USART_TransmitNoAdd(mult_buf);
+		USART_Transmit('\n');
+		
+		// Provide immediate sensory feedback
+		BLUE_OFF;
 		RED_OFF;
+		//_//delay_ms(5); // Fast flash feedback
+		BLUE_ON;
 
 		if (combo >= COMBO_THRESHOLD)
 		{
@@ -525,16 +608,44 @@ void measuring (void)
 			lcd_putcmd(LCD_SET_CURSOR | SECOND_ROW);
 			lcd_puts((uint8_t *)"POWER-UP READY!");
 		}
+		
+		// CLEAR the note from the target line Row 7 so it disappears immediately on a successful tap!
+		if (current_lane < 3)
+		{
+			game_screen[7][current_lane] = 0;
+		}
 	}
-	else                                           //miss:
+	else // Tapped, but somehow fell outside the timing bounds
 	{
-		combo          = 0;
-		multiplier     = 1;
-		power_up_ready = 0;
+		combo           = 0;
+		multiplier      = 1;
+		power_up_ready  = 0;
+		power_up_active = 0;
+		
+		char score_buf[16];
+		char combo_buf[8];
+		char mult_buf[8];
+
+		ltoa(current_score, score_buf, 10);
+		itoa(combo, combo_buf, 10);
+		itoa(multiplier, mult_buf, 10);
+
+		USART_TransmitNoAdd("HUD:");
+		USART_TransmitNoAdd(score_buf);
+		USART_Transmit(',');
+		USART_TransmitNoAdd(combo_buf);
+		USART_Transmit(',');
+		USART_TransmitNoAdd(mult_buf);
+		USART_Transmit('\n');
+		
 		RED_ON;
 		BLUE_OFF;
+		//USART_TransmitStr_P(PSTR("STATUS:TIMING MISS"));
 	}
 
+	// Turn off Timer1 tracking and restore status back to active polling
+	TCCR1B &= ~((1<<CS12) | (1<<CS10));
+	TCNT1 = 0;
 	stage = RUNNING;
 }
 
@@ -543,9 +654,18 @@ void gameOver (void)
 	RED_OFF;
 	BLUE_OFF;
 
+	// GUARD: If current_score is 0, they didn't just play a game (e.g. they are just navigating menus)
+	if (current_score == 0)
+	{
+		high_score_achieved = 0;
+		displayHighScores();
+		mainMenu();
+		return;
+	}
+
 	high_score_achieved = 0;
 
-	for (uint8_t i = 0; i < 10; i++)
+	for (uint8_t i = 0; i < 9; i++)
 	{
 		if (current_score > top_scores[i].score)
 		{
@@ -555,6 +675,10 @@ void gameOver (void)
 	}
 
 	displayGameOver(current_score, high_score_achieved);
+	
+	cli();
+	waitForEnter();
+	sei();
 
 	if (high_score_achieved)
 	{
@@ -576,9 +700,14 @@ void gameOver (void)
 		}
 
 		initials[3] = '\0';
+		
+		while (UCSR0A & (1 << RXC0))
+		{
+			volatile char throwaway = UDR0;
+		}
 
 		// Insert score into leaderboard
-		for (int8_t i = 9; i >= 0; i--)
+		for (int8_t i = 8; i >= 0; i--)
 		{
 			if (i == 0 || current_score <= top_scores[i - 1].score)
 			{
@@ -594,10 +723,20 @@ void gameOver (void)
 
 			top_scores[i] = top_scores[i - 1];
 		}
+		
+		saveHighScores();
 	}
 
-	displayHighScores();
+	// Reset current_score to 0 so this block cannot accidentally re-trigger
+	current_score = 0;
+	high_score_achieved = 0;
 
+	displayHighScores();
+	
+	cli();
+	waitForEnter();
+	sei();
+	
 	mainMenu();
 }
 
@@ -788,4 +927,107 @@ void receiveBeatMap (void)
 	itoa(beat_count, game_conversion_buf, 10);
 	USART_TransmitStr(game_conversion_buf);
 	USART_TransmitStr_P(PSTR(" beats ready."));
+}
+
+void saveHighScores (void)
+{
+	eeprom_write_byte((uint8_t *)EEPROM_MAGIC_ADDR, EEPROM_MAGIC);
+	eeprom_write_block(
+	(const void *)top_scores,
+	(void *)EEPROM_SCORES_ADDR,
+	sizeof(top_scores)
+	);
+}
+
+void loadHighScores (void)
+{
+	uint8_t magic = eeprom_read_byte((uint8_t *)EEPROM_MAGIC_ADDR);
+
+	if (magic != EEPROM_MAGIC)             // first boot, no data yet
+	{
+		for (uint8_t i = 0; i < 9; i++)
+		{
+			top_scores[i].score = 0;
+			top_scores[i].initials[0] = '-';
+			top_scores[i].initials[1] = '-';
+			top_scores[i].initials[2] = '-';
+			top_scores[i].initials[3] = '\0';
+		}
+		return;
+	}
+
+	eeprom_read_block(
+	(void *)top_scores,
+	(const void *)EEPROM_SCORES_ADDR,
+	sizeof(top_scores)
+	);
+}
+
+void waitForEnter(void)
+{
+	//USART_TransmitStr_P(PSTR("PRESS ENTER"));
+
+	// Flush old buffered bytes first
+	while (UCSR0A & (1 << RXC0))
+	{
+		volatile char throwaway = UDR0;
+	}
+
+	// Wait for fresh keypress
+	USART_Receive();
+
+	// Flush trailing garbage
+	while (UCSR0A & (1 << RXC0))
+	{
+		volatile char throwaway = UDR0;
+	}
+}
+
+void sensorDebug(void)
+{
+	USART_TransmitStr_P(PSTR("SENSOR_DEBUG_START"));
+	
+	while (UCSR0A & (1 << RXC0))
+	{
+		volatile char throwaway = UDR0;
+	}
+
+	while (1)
+	{
+		// Exit on key press
+		if (UCSR0A & (1 << RXC0))
+		{
+			volatile char throwaway = UDR0;
+
+			USART_TransmitStr_P(PSTR("SENSOR_DEBUG_END"));
+			break;
+		}
+
+		int16_t x = getTiltX();
+
+		uint16_t pot   = ADC_read(POT_CHANNEL);
+		uint16_t light = ADC_read(PHOTO_CHANNEL);
+
+		char xbuf[16];
+		char pbuf[16];
+		char lbuf[16];
+
+		itoa(x, xbuf, 10);
+		itoa(pot, pbuf, 10);
+		itoa(light, lbuf, 10);
+
+		USART_TransmitNoAdd("SENSOR:");
+
+		USART_TransmitNoAdd(xbuf);
+		USART_Transmit(',');
+
+		USART_TransmitNoAdd(pbuf);
+		USART_Transmit(',');
+
+		USART_TransmitNoAdd(lbuf);
+
+		USART_Transmit('\n');
+
+		_delay_ms(100);
+	}
 }

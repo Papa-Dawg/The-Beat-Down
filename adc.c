@@ -25,45 +25,63 @@
 //======================================================================================================================
 void ADC_init (void)
 {
-    ADMUX = (1 << REFS0);                     // Sets 5V voltage reference.
-    ADCSRA |= (1 << ADEN);                    // Enables ADC.
+    ADMUX = (1 << REFS0);                                                 //sets 5V voltage reference.
+    ADCSRA |= (1 << ADEN);                                                //enables ADC.
     ADCSRA |= (1 << ADPS2)
            | (1 << ADPS1)
-           | (1 << ADPS0);                    // Sets prescaler to 128 (16MHz / 128 = 125kHz).
+           | (1 << ADPS0);                                                //sets prescaler to 128 (16MHz / 128 = 125kHz).
 }
 
 uint16_t ADC_read (uint8_t channel)
 {
-    channel &= 0x07U;                         // Keeps channel range between 0-7.
-    ADMUX = (ADMUX & 0xF0U) | channel;        // Clears old channel selection, applies new one.
+    channel &= 0x07U;                                                     //keeps channel range between 0-7.
+    ADMUX = (ADMUX & 0xF0U) | channel;                                    //clears old channel selection, applies new one.
 
-    ADCSRA |= (1U << ADSC);                   // Starts the conversion.
-    while (ADCSRA & (1U << ADSC)) { }         // Waits for conversion to complete.
+    ADCSRA |= (1U << ADSC);                                               //starts the conversion.
+    while (ADCSRA & (1U << ADSC)) { }                                     //Waits for conversion to complete.
 
-    return ADC;                               // Returns the 10-bit value (0-1023)
+    return ADC;                                                           //returns the value (0-1023)
+}
+
+uint16_t getTimingWindow(void)
+{
+	uint16_t adc = ADC_read(POT_CHANNEL);
+
+	if (adc < 342)
+	{
+		return 90;   // EASY
+	}
+	else if (adc < 683)
+	{
+		return 70;   // MEDIUM
+	}
+	else
+	{
+		return 50;   // HARD
+	}
 }
 
 void checkLight (void)
 {
-    uint16_t raw = ADC_read(PHOTO_CHANNEL);   //reads photoresistor.
+    uint16_t raw = ADC_read(PHOTO_CHANNEL);                               //reads photoresistor.
 
-    if (raw < DARK_THRESHOLD && stage == RUNNING)       //if covered during game:
+    if (raw < DARK_THRESHOLD && (stage == RUNNING || stage == WAITING))   //if covered during the game:
     {
-        stage = PAUSED;                       //pause the game.
-        USART_TransmitStr_P(PSTR("PAUSE"));           //signals Python to pause song.
-        RED_ON;                               //red LED -- paused state.
+        stage = PAUSED;                                                   //pauses the game.
+        USART_TransmitStr_P(PSTR("PAUSE"));                               //signals Python to pause song.
+        RED_ON;                                                           //red LED -- paused state.
         BLUE_OFF;
         lcd_putcmd(LCD_SET_CURSOR | FIRST_ROW);
         lcd_puts((uint8_t *)"  -- PAUSED --  ");
         lcd_putcmd(LCD_SET_CURSOR | SECOND_ROW);
-        lcd_puts((uint8_t *)"  Cover sensor  ");
+        lcd_puts((uint8_t *)" Uncover sensor ");
     }
-    else if (raw > LIGHT_THRESHOLD && stage == PAUSED)  //if uncovered while paused:
+    else if (raw > LIGHT_THRESHOLD && stage == PAUSED)                    //if uncovered while paused:
     {
-        stage = RUNNING;                      //resume the game.
-        USART_TransmitStr_P(PSTR("RESUME"));          //signals Python to resume song.
+        stage = RUNNING;                                                  //resume the game.
+        USART_TransmitStr_P(PSTR("RESUME"));                              //signals Python to resume song.
         RED_OFF;
-        BLUE_ON;                              //blue LED -- normal state.
+        BLUE_ON;                                                          //blue LED -- normal state.
         lcd_putcmd(LCD_SET_CURSOR | FIRST_ROW);
         lcd_puts((uint8_t *)"  -- RUNNING -- ");
         lcd_putcmd(LCD_SET_CURSOR | SECOND_ROW);

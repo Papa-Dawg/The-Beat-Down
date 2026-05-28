@@ -21,6 +21,7 @@ void USART_Init(unsigned int ubrr);
 void USART_Transmit(unsigned char data);
 void USART_TransmitStr(const char *str);
 void USART_TransmitStr_P(const char *str);
+void USART_TransmitNoAdd(const char *s);
 unsigned char USART_Receive(void);
 void USART_TransmitLine (const char *str1, char separator, const char *str2);
 

@@ -18,14 +18,15 @@
 //======================================================================================================================
 #define POT_CHANNEL        0                          //potentiometer on ADC channel 0.
 #define PHOTO_CHANNEL      1                          //photoresistor on ADC channel 1.
-#define DARK_THRESHOLD     10                        //threshold for covered sensor (pause).
-#define LIGHT_THRESHOLD    50                        //threshold for uncovered sensor (resume).
+#define DARK_THRESHOLD     200                         //threshold for covered sensor (pause).
+#define LIGHT_THRESHOLD    200                         //threshold for uncovered sensor (resume).
 
 //======================================================================================================================
 //                                                   Functions
 //======================================================================================================================
 void ADC_init(void);
 uint16_t ADC_read(uint8_t channel);
+uint16_t getTimingWindow(void);
 void checkLight(void);
 
 #endif /* ADC_H_ */

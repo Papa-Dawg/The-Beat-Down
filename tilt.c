@@ -22,7 +22,8 @@
 //======================================================================================================================
 //                                                   Definitions
 //======================================================================================================================
-#define TILT_THRESHOLD         200                     //minimum acceleration to register tilt.
+#define TILT_THRESHOLD         100                     //minimum acceleration to register tilt.
+#define TILT_RELEASE           50                     //
 #define WRITE_ADDRESS          0xA6                    //ADXL345 write address.
 #define READ_ADDRESS           0xA7                    //ADXL345 read address.
 #define X_AXIS_0               0x32                    //X axis low byte register.
@@ -58,6 +59,11 @@ static int16_t readAccelerometer (void)
     return (int16_t)((high << 8) | low);
 }
 
+int16_t getTiltX(void)
+{
+	return readAccelerometer();
+}
+
 void tilt_init (void)
 {
     TWBR = TWBR_VALUE;                        //sets I2C clock speed.
@@ -75,12 +81,20 @@ void checkTilt (void)
 
     if (x < 0) x = -x;                       //absolute value without stdlib.
 
-    if (x > TILT_THRESHOLD && stage == RUNNING && power_up_ready)
+    static uint8_t tilt_lock = 0;
+	
+    if (x < TILT_RELEASE)
     {
-        multiplier     = 2;                   //activates 2x score multiplier.
-        power_up_ready = 0;                   //consumes the power up.
+	    tilt_lock = 0;
+    }
+	
+    if (x > TILT_THRESHOLD && stage == WAITING && power_up_ready && !tilt_lock && !power_up_active) // 
+    {
+	    tilt_lock       = 1;
+        power_up_ready  = 0;                   //consumes the power up.
+		power_up_active = 1;                   //sets power_up to active.
 
-        USART_TransmitStr("*** 2X MULTIPLIER ACTIVATED ***");
+        //USART_TransmitStr("STATUS:*** 2X MULTIPLIER ACTIVATED ***");
 
         lcd_putcmd(LCD_SET_CURSOR | SECOND_ROW);
         lcd_puts((uint8_t *)"  ** 2X ACTIVE **   ");
