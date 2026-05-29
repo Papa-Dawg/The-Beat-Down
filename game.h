@@ -1,43 +1,52 @@
+//======================================================================================================================
+// Title:       game.h
+// Author:      nathan ramos
+// Created:     5/15/2026
+// Description: Header file for game module.
+//======================================================================================================================
+
 #ifndef GAME_H_
 #define GAME_H_
 
+//======================================================================================================================
+//                                                     Libraries
+//======================================================================================================================
 #include <avr/io.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <avr/interrupt.h>
+#include <util/delay.h>
 #include <util/atomic.h>
 #include <avr/eeprom.h>
-
 //======================================================================================================================
 //                                                     Types
 //======================================================================================================================
 typedef enum { RUNNING, WAITING, PAUSED } GameStage;
-
 typedef struct {
 	char     initials[4];
 	uint32_t score;
 } HighScore;
-
 typedef struct {
 	uint16_t delta_and_lane; // Lower 14 bits = relative delta time, Upper 2 bits = lane (0-2)
 } Beat;
-
 //======================================================================================================================
 //                                                   Definitions
 //======================================================================================================================
-#define EEPROM_MAGIC        0xBE           // magic byte to detect valid data
-#define EEPROM_MAGIC_ADDR   0              // address 0: magic byte
-#define EEPROM_SCORES_ADDR  1              // address 1: start of scores array
-#define COMBO_THRESHOLD    1
-#define BAUD               115200
-#define MYUBRR             (F_CPU/8/BAUD-1)
-#define MAX_BEATS          475
-#define LED_DDR            DDRD |= (1<<DDD6)
-#define LED_DDR_RED        DDRD |= (1<<DDD7)
-#define BLUE_ON            PORTD |= (1<<PORTD6)
-#define BLUE_OFF           PORTD &= ~(1<<PORTD6)
-#define RED_ON             PORTD |= (1<<PORTD7)
-#define RED_OFF            PORTD &= ~(1<<PORTD7)
-#define SCROLL_TIME        800    // ms for a beat to travel from top to bottom
-#define TICK_INTERVAL      100    // ms between each scroll step (8 rows * 100ms = 800ms)
+#define EEPROM_MAGIC        0xBE                           //magic byte to detect valid data
+#define EEPROM_MAGIC_ADDR   0                              //address 0: magic byte
+#define EEPROM_SCORES_ADDR  1                              //address 1: start of scores array
+#define COMBO_THRESHOLD     20
+#define BAUD                115200
+#define MYUBRR              (F_CPU/8/BAUD-1)
+#define MAX_BEATS           475
+#define LED_DDR             DDRD |= (1<<DDD6)
+#define LED_DDR_RED         DDRD |= (1<<DDD7)
+#define BLUE_ON             PORTD |= (1<<PORTD6)
+#define BLUE_OFF            PORTD &= ~(1<<PORTD6)
+#define RED_ON              PORTD |= (1<<PORTD7)
+#define RED_OFF             PORTD &= ~(1<<PORTD7)
+#define SCROLL_TIME         800                             //ms for a beat to travel from top to bottom
+#define TICK_INTERVAL       100                             //ms between each scroll step
 //======================================================================================================================
 //                                               Global Variables
 //======================================================================================================================
@@ -72,3 +81,6 @@ void waitForEnter(void);
 void sensorDebug(void);
 
 #endif /* GAME_H_ */
+//======================================================================================================================
+//                                                 End of File
+//======================================================================================================================

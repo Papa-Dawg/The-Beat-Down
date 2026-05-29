@@ -9,11 +9,6 @@
 //======================================================================================================================
 #define F_CPU                  16000000UL
 //======================================================================================================================
-//                                                    Libraries
-//======================================================================================================================
-#include <avr/io.h>
-#include <stdint.h>
-//======================================================================================================================
 //                                                     Imports
 //======================================================================================================================
 #include "adc.h"
@@ -45,23 +40,23 @@ uint16_t ADC_read (uint8_t channel)
 
 uint16_t getTimingWindow(void)
 {
-	uint16_t adc = ADC_read(POT_CHANNEL);
+	uint16_t adc = ADC_read(POT_CHANNEL);                                 //reads potentiometer value.
 
-	if (adc < 342)
+	if (adc < 342)                                                        //below 342 sets the difficulty to easy.
 	{
-		return 90;   // EASY
+		return 90;                                                        //timing window tolerance.
 	}
-	else if (adc < 683)
+	else if (adc < 683)                                                   //below 683 sets the difficulty to medium.
 	{
-		return 70;   // MEDIUM
+		return 70;                                                        //medium.
 	}
-	else
+	else                                                                  //anything above sets difficulty to hard.
 	{
-		return 50;   // HARD
+		return 50;                                                        //hard.
 	}
 }
 
-void checkLight (void)
+void checkLight (void)                                                    //no longer pausing for the project.
 {
     uint16_t raw = ADC_read(PHOTO_CHANNEL);                               //reads photoresistor.
 
@@ -88,3 +83,6 @@ void checkLight (void)
         lcd_puts((uint8_t *)"                ");
     }
 }
+//======================================================================================================================
+//                                                    End of File
+//======================================================================================================================

@@ -2,7 +2,7 @@
 // Title:       button.c
 // Author:      nathan ramos
 // Created:     5/15/2026
-// Description: My button module, for handling the button pressing logic.
+// Description: Button module for handling the button pressing logic.
 //======================================================================================================================
 //======================================================================================================================
 //                                                 System Settings

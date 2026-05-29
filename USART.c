@@ -9,12 +9,6 @@
 //======================================================================================================================
 #define F_CPU                  16000000UL
 //======================================================================================================================
-//                                                    Libraries
-//======================================================================================================================
-#include <avr/io.h>
-#include <stdint.h>
-#include <avr/pgmspace.h>
-//======================================================================================================================
 //                                                     Imports
 //======================================================================================================================
 #include "USART.h"
@@ -32,7 +26,7 @@ void USART_Init (unsigned int ubrr)
 
 void USART_Transmit (unsigned char data)
 {
-    while (!(UCSR0A & (1<<UDRE0)));            //waits for buffer to empty.
+    while (!(UCSR0A & (1<<UDRE0)));           //waits for buffer to empty.
     UDR0 = data;                              //stores the data.
 }
 
@@ -58,7 +52,7 @@ void USART_TransmitStr_P (const char *str)
     USART_Transmit('\n');                     //newline for readability.
 }
 
-void USART_TransmitNoAdd(const char *s)
+void USART_TransmitNoAdd(const char *s)       //for transmitting a string without \r\n
 {
 	while (*s)
 	{

@@ -9,21 +9,17 @@
 //======================================================================================================================
 #define F_CPU                  16000000UL
 //======================================================================================================================
-//                                                    Libraries
-//======================================================================================================================
-#include <avr/io.h>
-#include <stdint.h>
-//======================================================================================================================
 //                                                     Imports
 //======================================================================================================================
 #include "tilt.h"
 #include "USART.h"
 #include "lcd.h"
+#include "game.h"
 //======================================================================================================================
 //                                                   Definitions
 //======================================================================================================================
 #define TILT_THRESHOLD         100                     //minimum acceleration to register tilt.
-#define TILT_RELEASE           50                     //
+#define TILT_RELEASE           50                      //
 #define WRITE_ADDRESS          0xA6                    //ADXL345 write address.
 #define READ_ADDRESS           0xA7                    //ADXL345 read address.
 #define X_AXIS_0               0x32                    //X axis low byte register.
@@ -88,13 +84,11 @@ void checkTilt (void)
 	    tilt_lock = 0;
     }
 	
-    if (x > TILT_THRESHOLD && stage == WAITING && power_up_ready && !tilt_lock && !power_up_active) // 
+    if (x > TILT_THRESHOLD && (stage == WAITING || stage == RUNNING) && power_up_ready && !tilt_lock && !power_up_active)
     {
 	    tilt_lock       = 1;
         power_up_ready  = 0;                   //consumes the power up.
 		power_up_active = 1;                   //sets power_up to active.
-
-        //USART_TransmitStr("STATUS:*** 2X MULTIPLIER ACTIVATED ***");
 
         lcd_putcmd(LCD_SET_CURSOR | SECOND_ROW);
         lcd_puts((uint8_t *)"  ** 2X ACTIVE **   ");

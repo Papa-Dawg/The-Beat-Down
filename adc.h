@@ -12,14 +12,14 @@
 //                                                    Libraries
 //======================================================================================================================
 #include <stdint.h>
-
+#include <avr/io.h>
 //======================================================================================================================
 //                                                   Definitions
 //======================================================================================================================
-#define POT_CHANNEL        0                          //potentiometer on ADC channel 0.
-#define PHOTO_CHANNEL      1                          //photoresistor on ADC channel 1.
-#define DARK_THRESHOLD     200                         //threshold for covered sensor (pause).
-#define LIGHT_THRESHOLD    200                         //threshold for uncovered sensor (resume).
+#define POT_CHANNEL        0                           //potentiometer on ADC channel 0.
+#define PHOTO_CHANNEL      1                           //photoresistor on ADC channel 1.
+#define DARK_THRESHOLD     200                         //threshold for covered sensor (pause) -- OBSOLETE.
+#define LIGHT_THRESHOLD    200                         //threshold for uncovered sensor (resume) -- OBSOLETE.
 
 //======================================================================================================================
 //                                                   Functions
@@ -30,3 +30,6 @@ uint16_t getTimingWindow(void);
 void checkLight(void);
 
 #endif /* ADC_H_ */
+//======================================================================================================================
+//                                                    End of File
+//======================================================================================================================

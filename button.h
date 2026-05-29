@@ -27,7 +27,7 @@
 #define BUTTON_RELEASED(pin, lock_state)   (STATE_HIGH(pin) && (lock_state == 2))  //button is released.
 #define ENABLE_INT                         EIMSK |= (1<<INT0)|(1<<INT1)            //INT enabled.
 #define ENABLE_PCINT                       PCMSK2 |= (1<<PCINT20); \
-PCICR  |= (1<<PCIE2)                    //enables pin change interrupt.
+                                           PCICR  |= (1<<PCIE2)                    //enables pin change interrupt.
 #define DISABLE_INT                        EIMSK &= ~((1<<INT0)|(1<<INT1))         //INT disabled.
 #define DISABLE_PCINT                      PCMSK2 &= ~(1<<PCINT20)                 //disables pin change interrupt.
 #define INT_ON_CHANGE                      EICRA |= (1<<ISC00)|(1<<ISC10)          //INT triggered on change.
