@@ -1,96 +1,105 @@
-import serial
-import pygame
-import threading
-import sys
-import time
-import os
-import re
-import msvcrt
-
-PORT     = 'COM5'
-BAUDRATE = 115200
-SONG     = 'Goodness Gracious.mp3'
-INTRO    = 'intro.mp3'
-
-pygame.mixer.init()
-ser = serial.Serial(PORT, BAUDRATE, timeout=1)
-
-time.sleep(2)
-
-# =====================================================================
-# Global State
-# =====================================================================
-recording         = False
-is_song_recording = False
-beat_map          = []
-running           = True
-leaderboard_data  = []
-menu_buffer       = []
-latest_score      = "0"
-latest_combo      = "0"
-latest_multiplier = "1"
-current_track     = None
-game_active       = False
-difficulty_text   = "MEDIUM"
-
+#=====================================================================================================
+# Title:       song.py
+# Author:      nathan ramos
+# Created:     5/15/2026
+# Description: Python file for THE BEAT DOWN! (TM).
+#=====================================================================================================
+#=====================================================================================================
+#                                            Libraries
+#=====================================================================================================
+import serial        # Handles serial connection communication with the Arduino Uno.
+import pygame        # Utilized specifically to handle audio playback.
+import threading     # Allows running asynchronous tasks (reading/writing data) at the same time.
+import sys           # Provides access to system-specific variables.
+import time          # Used for adding delays.
+import os            # For getting the terminal display size, mainly.
+import re            # Library used to strip out visual ANSI styling characters.
+import msvcrt        # For 'Press any key' funciton.
+#=====================================================================================================
+#                                           Definitions
+#=====================================================================================================
+PORT     = 'COM5'                          # Port that controller is connected to.
+BAUDRATE = 115200                          # Data transmission speed.
+SONG     = 'Goodness Gracious.mp3'         # The song that I chose for the actual game.
+INTRO    = 'intro.mp3'                     # Song played during menu screens.
 # Colors:
-RED     = "\033[91m"
+RED     = "\033[91m"                       # Colors for display.
 BLUE    = "\033[94m"
 CYAN    = "\033[96m"
 MAGENTA = "\033[95m"
 YELLOW  = "\033[93m"
 GREEN   = "\033[92m"
 WHITE   = "\033[97m"
-
 BOLD    = "\033[1m"
 RESET   = "\033[0m"
-
-# Persistent game display state
-latest_grid       = None
-latest_status     = ""
-
-# =====================================================================
+#=====================================================================================================
+#                                        Global Variables
+#=====================================================================================================
+recording         = False    # Tracks if raw timestamps are actively being saved to memory.
+is_song_recording = False    # State flag indicating if a custom beatmap recording session is active.
+beat_map          = []       # Array holding the recorded time-stamps and lanes.
+running           = True     # Universal master switch logic loop control for background threads.
+leaderboard_data  = []       # Array for high scores.
+menu_buffer       = []       # Array used to catch strays from serial.
+latest_score      = "0"      # Current score.
+latest_combo      = "0"      # Current combo.
+latest_multiplier = "1"      # Current multiplier.
+current_track     = None     # Current track.
+game_active       = False    # Tracks if actual game is running.
+difficulty_text   = "MEDIUM" # For displaying difficulty level.
+latest_grid       = None     # Current game board render.
+latest_status     = ""       # For catching updates from controller.
+#=====================================================================================================
+#                                         Initializations
+#=====================================================================================================
+pygame.mixer.init()                                   # Initializes mixer for audio playback.
+ser = serial.Serial(PORT, BAUDRATE, timeout=1)        # Initializes communication with the controller.
+time.sleep(2)                                         # Delay for Arduino initialization.
+#=====================================================================================================
+#                                            Functions
+#=====================================================================================================
+#-----------------------------------------------------------------------------------------------------
 # Shutdown
-# =====================================================================
-def shutdown():
+#-----------------------------------------------------------------------------------------------------
+def shutdown():                       # Shuts everything down, gracefully.
     global running
 
-    if not running:
+    if not running:                   # Skips.
         return
 
     running = False
 
-    pygame.mixer.music.stop()
+    pygame.mixer.music.stop()         # Stops the music.
 
-    if ser.is_open:
+    if ser.is_open:                   # Closes serial communication with the controller.
         ser.close()
 
     sys.exit()
 
-# =====================================================================
+#-----------------------------------------------------------------------------------------------------
 # Song Chooser
-# =====================================================================
-def play_music(song, loop=True):
+#-----------------------------------------------------------------------------------------------------
+def play_music(song, loop=True):      # Plays song in a loop, while tracking which song is playing.
 
     global current_track
 
-    if current_track == song:
+    if current_track == song:         # Skips if current song is the same as intended song.
         return
 
-    pygame.mixer.music.stop()
-    pygame.mixer.music.load(song)
+    pygame.mixer.music.stop()         # Stops whatever might have been playing previously.
+    pygame.mixer.music.load(song)     # Plays intended song.
 
     if loop:
-        pygame.mixer.music.play(-1)
+        pygame.mixer.music.play(-1)   # Plays song in a loop.
     else:
-        pygame.mixer.music.play()
+        pygame.mixer.music.play()     # Plays song only once (for the game song).
 
-    current_track = song
+    current_track = song              # Sets intended song to current song.
 
-# =====================================================================
+#-----------------------------------------------------------------------------------------------------
 # Universal Framed Renderer
-# =====================================================================
-def render_in_box(lines_to_show):
+#-----------------------------------------------------------------------------------------------------
+def render_in_box(lines_to_show):     # Calculates window size and renders graphics centered with borders.
     try:
         columns, rows = os.get_terminal_size()
     except OSError:
@@ -138,14 +147,14 @@ def render_in_box(lines_to_show):
 
     print("\033[2J\033[H" + "\n".join(final_output), end="")
 
-# =====================================================================
+#-----------------------------------------------------------------------------------------------------
 # Beat Map Sender
-# =====================================================================
-def send_beatmap():
+#-----------------------------------------------------------------------------------------------------
+def send_beatmap():                             # Sends beatmap to the controller.
 
-    MAX_BEATS = 475
+    MAX_BEATS = 475                             # Max amount of tappable beats for a song.
 
-    if not os.path.exists('beatmap.txt'):
+    if not os.path.exists('beatmap.txt'):       # If no beatmap already:
 
         render_in_box([
             "No beatmap.txt found."
@@ -155,12 +164,12 @@ def send_beatmap():
         ser.flush()
         return
 
-    with open('beatmap.txt', 'r') as f:
+    with open('beatmap.txt', 'r') as f:         # Opens and reads the beatmap data.
         all_lines = [line.strip() for line in f if line.strip()]
 
     beat_lines = []
 
-    for line in all_lines:
+    for line in all_lines:                      # Parses through each line to extract the data.
 
         if ',' not in line:
             continue
@@ -176,30 +185,29 @@ def send_beatmap():
         if timestamp.isdigit() and lane.isdigit():
             beat_lines.append(f"{timestamp},{lane}")
 
-    beat_lines = beat_lines[:MAX_BEATS]
+    beat_lines = beat_lines[:MAX_BEATS]         # Packs extracted data into array, but only up to max beats.
 
     render_in_box([
         "Sending Beat Map...",
         f"{len(beat_lines)} beats loaded."
     ])
 
-    for line in beat_lines:
+    for line in beat_lines:                     # Sends the data to the controller.
         ser.write((line + '\n').encode())
-        time.sleep(0.001)
+        time.sleep(0.001)                       # To prevent buffer overflow.
 
-    ser.write(b'LOAD\n')
-    ser.flush()
+    ser.write(b'LOAD\n')                        # Sends instruction to load data.
+    ser.flush()                                 # Flushes the channel.
 
-# =====================================================================
+#-----------------------------------------------------------------------------------------------------
 # Leaderboard Renderer
-# =====================================================================
-def render_high_scores_ui():
-
+#-----------------------------------------------------------------------------------------------------
+def render_high_scores_ui():                    # Display function for showing the high scores.
     lines = []
 
-    # =====================================================
+    #-------------------------------------------------------------------------------------------------
     # Background Pattern
-    # =====================================================
+    #-------------------------------------------------------------------------------------------------
 
     for i in range(4):
 
@@ -212,9 +220,9 @@ def render_high_scores_ui():
 
     lines.append("")
 
-    # =====================================================
+    #-------------------------------------------------------------------------------------------------
     # Title
-    # =====================================================
+    #-------------------------------------------------------------------------------------------------
 
     lines.append(
         f"{MAGENTA}{BOLD}"
@@ -234,9 +242,9 @@ def render_high_scores_ui():
         f"{RESET}"
     )
 
-    # =====================================================
+    #-------------------------------------------------------------------------------------------------
     # Header Row
-    # =====================================================
+    #-------------------------------------------------------------------------------------------------
 
     lines.append(
         f"{MAGENTA}{BOLD}"
@@ -250,9 +258,9 @@ def render_high_scores_ui():
         f"{RESET}"
     )
 
-    # =====================================================
+    #-------------------------------------------------------------------------------------------------
     # Score Rows
-    # =====================================================
+    #-------------------------------------------------------------------------------------------------
 
     for i, row in enumerate(leaderboard_data):
 
@@ -260,13 +268,12 @@ def render_high_scores_ui():
         initials = row['initials']
         score = row['score']
 
-        # Top 3 colors
         if i == 0:
-            row_color = YELLOW + BOLD      # Gold
+            row_color = YELLOW + BOLD 
         elif i == 1:
-            row_color = CYAN + BOLD        # Silver-ish
+            row_color = CYAN + BOLD 
         elif i == 2:
-            row_color = MAGENTA + BOLD     # Bronze-ish / neon
+            row_color = MAGENTA + BOLD 
         else:
             row_color = WHITE
 
@@ -278,9 +285,9 @@ def render_high_scores_ui():
             f"{RESET}"
         )
 
-    # =====================================================
+    #-------------------------------------------------------------------------------------------------
     # Footer
-    # =====================================================
+    #-------------------------------------------------------------------------------------------------
 
     lines.append(
         f"{WHITE}"
@@ -298,9 +305,9 @@ def render_high_scores_ui():
 
     lines.append("")
 
-    # =====================================================
+    #-------------------------------------------------------------------------------------------------
     # Bottom Pattern
-    # =====================================================
+    #-------------------------------------------------------------------------------------------------
 
     for i in range(4):
 
@@ -313,10 +320,10 @@ def render_high_scores_ui():
 
     render_in_box(lines)
 
-# =====================================================================
+#-----------------------------------------------------------------------------------------------------
 # Game Board Renderer
-# =====================================================================
-def draw_game_board(matrix_str, status_msg=""):
+#-----------------------------------------------------------------------------------------------------
+def draw_game_board(matrix_str, status_msg=""):     # Display function for the game board.
 
     global latest_grid
     global latest_status
@@ -335,9 +342,9 @@ def draw_game_board(matrix_str, status_msg=""):
 
         board = []
 
-        # =====================================================
+        #---------------------------------------------------------------------------------------------
         # Animated Background Pattern
-        # =====================================================
+        #---------------------------------------------------------------------------------------------
 
         for i in range(3):
 
@@ -350,9 +357,9 @@ def draw_game_board(matrix_str, status_msg=""):
 
         board.append("")
 
-        # =====================================================
+        #---------------------------------------------------------------------------------------------
         # HUD BOX
-        # =====================================================
+        #---------------------------------------------------------------------------------------------
 
         board.append(
             f"{MAGENTA}{BOLD}"
@@ -377,10 +384,9 @@ def draw_game_board(matrix_str, status_msg=""):
 
         board.append("")
 
-        # =====================================================
+        #---------------------------------------------------------------------------------------------
         # Header
-        # =====================================================
-
+        #---------------------------------------------------------------------------------------------
         board.append(
             f"{MAGENTA}╔════════════╦════════════╦════════════╗{RESET}"
         )
@@ -396,9 +402,9 @@ def draw_game_board(matrix_str, status_msg=""):
             f"{MAGENTA}╠════════════╬════════════╬════════════╣{RESET}"
         )
 
-        # =====================================================
+        #---------------------------------------------------------------------------------------------
         # Note Grid
-        # =====================================================
+        #---------------------------------------------------------------------------------------------
 
         for row_bits in rows_data:
 
@@ -420,10 +426,9 @@ def draw_game_board(matrix_str, status_msg=""):
                 f"{MAGENTA}║{RESET}"
             )
 
-        # =====================================================
+        #---------------------------------------------------------------------------------------------
         # Tap Zone
-        # =====================================================
-
+        #---------------------------------------------------------------------------------------------
         board.append(
             f"{MAGENTA}╠════════════╩════════════╩════════════╣{RESET}"
         )
@@ -437,9 +442,9 @@ def draw_game_board(matrix_str, status_msg=""):
             f"{MAGENTA}╚══════════════════════════════════════╝{RESET}"
         )
 
-        # =====================================================
+        #---------------------------------------------------------------------------------------------
         # Status
-        # =====================================================
+        #---------------------------------------------------------------------------------------------
 
         if latest_status:
 
@@ -451,9 +456,9 @@ def draw_game_board(matrix_str, status_msg=""):
 
         board.append("")
 
-        # =====================================================
+        #---------------------------------------------------------------------------------------------
         # Bottom Background
-        # =====================================================
+        #---------------------------------------------------------------------------------------------
 
         for i in range(3):
 
@@ -469,6 +474,9 @@ def draw_game_board(matrix_str, status_msg=""):
     except Exception:
         pass
 
+#-----------------------------------------------------------------------------------------------------
+# Start Screen Renderer
+#-----------------------------------------------------------------------------------------------------
 def render_start_screen():
 
     logo = [
@@ -480,12 +488,10 @@ def render_start_screen():
         f"{MAGENTA}{BOLD}   ╚═╝   ╚═╝  ╚═╝╚══════╝    ╚═════╝ ╚══════╝╚═╝  ╚═╝   ╚═╝      ╚═════╝  ╚═════╝  ╚══╝╚══╝ ╚═╝  ╚═══╝{RESET}",
     ]
 
-    # Animate line-by-line reveal
     for i in range(len(logo)):
         render_in_box(logo[:i+1])
         time.sleep(0.08)
 
-    # Flashing prompt loop
     while True:
 
         render_in_box(
@@ -516,15 +522,18 @@ def render_start_screen():
             msvcrt.getch()
             break
 
+#-----------------------------------------------------------------------------------------------------
+# Main Menu Renderer
+#-----------------------------------------------------------------------------------------------------
 def render_main_menu():
 
     global difficulty_text
 
     lines = []
 
-    # =========================================================
+    #-------------------------------------------------------------------------------------------------
     # Diamond Dot Background
-    # =========================================================
+    #-------------------------------------------------------------------------------------------------
 
     for i in range(8):
 
@@ -535,9 +544,9 @@ def render_main_menu():
 
         lines.append(f"{BLUE}{bg}{RESET}")
 
-    # =========================================================
+    #-------------------------------------------------------------------------------------------------
     # Main Menu Box
-    # =========================================================
+    #-------------------------------------------------------------------------------------------------
 
     lines.extend([
 
@@ -566,10 +575,9 @@ def render_main_menu():
         ""
     ])
 
-    # =========================================================
+    #-------------------------------------------------------------------------------------------------
     # Bottom Background
-    # =========================================================
-
+    #-------------------------------------------------------------------------------------------------
     for i in range(8):
 
         if i % 2 == 0:
@@ -581,13 +589,16 @@ def render_main_menu():
 
     render_in_box(lines)
 
+#-----------------------------------------------------------------------------------------------------
+# Sensor Data Renderer
+#-----------------------------------------------------------------------------------------------------
 def render_sensor_debug_ui(x, pot, light):
 
     lines = []
 
-    # =====================================================
+    #-------------------------------------------------------------------------------------------------
     # Background Pattern
-    # =====================================================
+    #-------------------------------------------------------------------------------------------------
 
     for i in range(4):
 
@@ -600,10 +611,9 @@ def render_sensor_debug_ui(x, pot, light):
 
     lines.append("")
 
-    # =====================================================
+    #-------------------------------------------------------------------------------------------------
     # Title Box
-    # =====================================================
-
+    #-------------------------------------------------------------------------------------------------
     lines.append(
         f"{CYAN}{BOLD}"
         "╔══════════════════════════════════════╗"
@@ -622,9 +632,9 @@ def render_sensor_debug_ui(x, pot, light):
         f"{RESET}"
     )
 
-    # =====================================================
+    #-------------------------------------------------------------------------------------------------
     # Sensor Values
-    # =====================================================
+    #-------------------------------------------------------------------------------------------------
 
     lines.append(
         f"{YELLOW}║    Tilt X Value:   {WHITE}{x:<16}  "
@@ -641,9 +651,9 @@ def render_sensor_debug_ui(x, pot, light):
         f"{MAGENTA}║{RESET}"
     )
 
-    # =====================================================
+    #-------------------------------------------------------------------------------------------------
     # Footer
-    # =====================================================
+    #-------------------------------------------------------------------------------------------------
 
     lines.append(
         f"{RED}"
@@ -659,9 +669,9 @@ def render_sensor_debug_ui(x, pot, light):
 
     lines.append("")
 
-    # =====================================================
+    #-------------------------------------------------------------------------------------------------
     # Bottom Pattern
-    # =====================================================
+    #-------------------------------------------------------------------------------------------------
 
     for i in range(4):
 
@@ -674,10 +684,10 @@ def render_sensor_debug_ui(x, pot, light):
 
     render_in_box(lines)
 
-# =====================================================================
+#-----------------------------------------------------------------------------------------------------
 # Arduino Reader Thread
-# =====================================================================
-def read_from_arduino():
+#-----------------------------------------------------------------------------------------------------
+def read_from_arduino():            # Updates the game based on input from the controller.
 
     global recording
     global beat_map
@@ -706,9 +716,9 @@ def read_from_arduino():
                 if not line:
                     continue
 
-                # =====================================================
-                # GRID
-                # =====================================================
+                #-------------------------------------------------------------------------------------
+                # Grid
+                #-------------------------------------------------------------------------------------
                 if line.startswith("GRID:"):
 
                     matrix_data = line.replace("GRID:", "")
@@ -720,9 +730,9 @@ def read_from_arduino():
 
                     continue
 
-                # =====================================================
-                # SCORE BOX
-                # =====================================================
+                #-------------------------------------------------------------------------------------
+                # Score Box
+                #-------------------------------------------------------------------------------------
                 elif line.startswith("HUD:"):
 
                     try:
@@ -747,9 +757,9 @@ def read_from_arduino():
 
                     continue
 
-                # =====================================================
-                # STATUS
-                # =====================================================
+                #-------------------------------------------------------------------------------------
+                # Status
+                #-------------------------------------------------------------------------------------
                 elif line.startswith("STATUS:"):
 
                     latest_status = line.replace("STATUS:", "").strip()
@@ -768,9 +778,9 @@ def read_from_arduino():
                     ])
                     continue
                 
-                # =====================================================
+                #-------------------------------------------------------------------------------------
                 # Main Menu
-                # =====================================================
+                #-------------------------------------------------------------------------------------
                 elif line == "SHOW_MENU":
 
                     render_main_menu()
@@ -785,9 +795,9 @@ def read_from_arduino():
 
                     continue
 
-                # =====================================================
-                # LEADERBOARD
-                # =====================================================
+                #-------------------------------------------------------------------------------------
+                # Leaderboard
+                #-------------------------------------------------------------------------------------
                 elif line == "LEADERBOARD_START":
 
                     leaderboard_data = []
@@ -812,10 +822,9 @@ def read_from_arduino():
                     render_high_scores_ui()
                     continue
 
-                # =====================================================
-                # SENSOR DATA
-                # =====================================================
-
+                #-------------------------------------------------------------------------------------
+                # Sensor Data
+                #-------------------------------------------------------------------------------------
                 elif line == "SENSOR_DEBUG_START":
 
                     render_sensor_debug_ui("0", "0", "0")
@@ -838,9 +847,9 @@ def read_from_arduino():
 
                     continue
 
-                # =====================================================
-                # GAME OVER
-                # =====================================================
+                #-------------------------------------------------------------------------------------
+                # Game Over
+                #-------------------------------------------------------------------------------------
                 elif line.startswith("GAME_OVER:"):
 
                     game_active = False
@@ -850,10 +859,9 @@ def read_from_arduino():
 
                     lines = []
 
-                    # =================================================
+                    #---------------------------------------------------------------------------------
                     # Background Pattern
-                    # =================================================
-
+                    #---------------------------------------------------------------------------------
                     for i in range(4):
 
                         if i % 2 == 0:
@@ -865,9 +873,9 @@ def read_from_arduino():
 
                     lines.append("")
 
-                    # =================================================
+                    #---------------------------------------------------------------------------------
                     # Title Box
-                    # =================================================
+                    #---------------------------------------------------------------------------------
 
                     lines.append(
                         f"{RED}{BOLD}"
@@ -887,9 +895,9 @@ def read_from_arduino():
                         f"{RESET}"
                     )
 
-                    # =================================================
+                    #---------------------------------------------------------------------------------
                     # Score Display
-                    # =================================================
+                    #---------------------------------------------------------------------------------
 
                     lines.append(
                         f"{YELLOW}{BOLD}"
@@ -909,10 +917,9 @@ def read_from_arduino():
                         f"{RESET}"
                     )
 
-                    # =================================================
+                    #---------------------------------------------------------------------------------
                     # High Score Celebration
-                    # =================================================
-
+                    #---------------------------------------------------------------------------------
                     if is_high_score == "1":
 
                         lines.append(
@@ -935,9 +942,9 @@ def read_from_arduino():
                             f"{RESET}"
                         )
 
-                    # =================================================
+                    #---------------------------------------------------------------------------------
                     # Footer
-                    # =================================================
+                    #---------------------------------------------------------------------------------
 
                     lines.append(
                         f"{MAGENTA}{BOLD}"
@@ -947,9 +954,9 @@ def read_from_arduino():
 
                     lines.append("")
 
-                    # =================================================
+                    #---------------------------------------------------------------------------------
                     # Bottom Background
-                    # =================================================
+                    #---------------------------------------------------------------------------------
 
                     for i in range(4):
 
@@ -964,9 +971,9 @@ def read_from_arduino():
 
                     continue
 
-                # =====================================================
-                # START GAME
-                # =====================================================
+                #-------------------------------------------------------------------------------------
+                # Start Game
+                #-------------------------------------------------------------------------------------
                 elif line == "START":
 
                     latest_status = ""
@@ -977,18 +984,18 @@ def read_from_arduino():
 
                     continue
 
-                # =====================================================
-                # LOAD BEATMAP
-                # =====================================================
+                #-------------------------------------------------------------------------------------
+                # Load Beatmap
+                #-------------------------------------------------------------------------------------
                 elif line == "READY_FOR_BEATMAP" and not game_active:
 
                     send_beatmap()
                     ser.reset_input_buffer()
                     continue
 
-                # =====================================================
-                # RECORDING
-                # =====================================================
+                #-------------------------------------------------------------------------------------
+                # Recording
+                #-------------------------------------------------------------------------------------
                 elif line == "Recording! Tap along to the song.":
 
                     is_song_recording = True
@@ -1029,9 +1036,9 @@ def read_from_arduino():
                     beat_map.append(line)
                     continue
 
-                # =====================================================
-                # PAUSE / RESUME
-                # =====================================================
+                #-------------------------------------------------------------------------------------
+                # Pause / Resume
+                #-------------------------------------------------------------------------------------
                 elif line == "PAUSE":
 
                     pygame.mixer.music.pause()
@@ -1042,22 +1049,20 @@ def read_from_arduino():
                     pygame.mixer.music.unpause()
                     continue
 
-                # =====================================================
-                # EXIT
-                # =====================================================
+                #-------------------------------------------------------------------------------------
+                # Exit
+                #-------------------------------------------------------------------------------------
                 elif "Goodbye" in line:
 
                     shutdown()
 
-                # =====================================================
-                # EVERYTHING ELSE
-                # =====================================================
+                #-------------------------------------------------------------------------------------
+                # Everything Else
+                #-------------------------------------------------------------------------------------
                 else:
 
-                    # Accumulate menu / informational text
                     menu_buffer.append(line)
 
-                    # Detect end of menu prompt
                     if "Enter your choice" in line:
                         render_in_box(menu_buffer)
                         menu_buffer.clear()
@@ -1065,10 +1070,10 @@ def read_from_arduino():
         except (serial.SerialException, OSError):
             break
 
-# =====================================================================
+#-----------------------------------------------------------------------------------------------------
 # Arduino Writer Thread
-# =====================================================================
-def write_to_arduino():
+#-----------------------------------------------------------------------------------------------------
+def write_to_arduino():        # Sends input from keyboard input to arduino.
 
     while running:
 
@@ -1084,46 +1089,52 @@ def write_to_arduino():
         except EOFError:
             break
 
-# =====================================================================
+#-----------------------------------------------------------------------------------------------------
 # Threads
-# =====================================================================
-read_thread = threading.Thread(
+#-----------------------------------------------------------------------------------------------------
+
+# These threads are basically background functions for communicating with the controller while the main loop is running.
+
+read_thread = threading.Thread(  # For receiving data from the controller.
     target=read_from_arduino,
-    daemon=True
+    daemon=True                  # Sets as a background process that will terminate when program ends.
 )
 
-write_thread = threading.Thread(
+write_thread = threading.Thread( # For sending data to the controller.
     target=write_to_arduino,
-    daemon=True
+    daemon=True                  # Sets as a background process that will terminate when program ends.
 )
 
 
-play_music(INTRO)
-render_start_screen()
+play_music(INTRO)                # Plays Intro.mp3 on startup.
+render_start_screen()            # Renders the start screen.
 
-read_thread.start()
-write_thread.start()
+read_thread.start()              # Starts the reading background process.
+write_thread.start()             # Starts the writing background process.
 
-# =====================================================================
+#-----------------------------------------------------------------------------------------------------
 # Main Loop
-# =====================================================================
+#-----------------------------------------------------------------------------------------------------
 try:
 
-    while running:
+    while running:               # The main loop keeping the program running.
 
-        # =====================================================
+        #---------------------------------------------------------------------------------------------
         # Recording mode auto-stop
-        # =====================================================
+        #---------------------------------------------------------------------------------------------
 
-        if is_song_recording:
+        if is_song_recording:    # If a beatmap is being recorded:
 
-            if not pygame.mixer.music.get_busy():
+            if not pygame.mixer.music.get_busy():   # Checks is song has ended.
 
-                ser.write(b's\n')
-                is_song_recording = False
+                ser.write(b's\n')                   # Tells controller recording has stopped. 
+                is_song_recording = False           # Sets recording flag to false.
 
-        time.sleep(0.1)
+        time.sleep(0.1)          # Safety delay.
 
-except KeyboardInterrupt:
+except KeyboardInterrupt:        # Ctrl + C
 
-    shutdown()
+    shutdown()                   # Shuts it all down gracefully.
+#=====================================================================================================
+#                            End of File
+#=====================================================================================================
