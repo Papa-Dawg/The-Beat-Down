@@ -27,7 +27,7 @@ typedef struct {
 	uint32_t score;
 } HighScore;
 typedef struct {
-	uint16_t delta_and_lane; // Lower 14 bits = relative delta time, Upper 2 bits = lane (0-2)
+	uint16_t delta_and_lane;                               //lower 14 bits: relative delta time, upper 2 bits: lane
 } Beat;
 //======================================================================================================================
 //                                                   Definitions

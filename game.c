@@ -250,7 +250,7 @@ void startGame (void)
 		sei();
 		
 		//==========================================================
-		// INPUT HANDLING
+		// Input Handling
 		//==========================================================
 		if (left_button_pressed || middle_button_pressed || right_button_pressed)
 		{
@@ -273,7 +273,7 @@ void startGame (void)
 			}
 
 			//======================================================
-			// HIT WINDOW
+			// Hit Window
 			//======================================================
 			if (stage == WAITING)
 			{
@@ -320,7 +320,7 @@ void startGame (void)
 			
 			/*
 			//======================================================= //could not get it working successfully :(
-			// EARLY / SPAM INPUT
+			// Early / Spam Detection
 			//======================================================= //but maybe one day??
 			else
 			{
@@ -353,7 +353,7 @@ void startGame (void)
 		}
 
 		//==========================================================
-		// SCROLL DISPLAY
+		// Scroll Display
 		//==========================================================
 		if ((current_ms - last_tick) >= TICK_INTERVAL)               //TICK_INTERVAL is the refresh rate, essentially.
 		{
@@ -404,7 +404,7 @@ void startGame (void)
 		}
 
 		//==========================================================
-		// HIT WINDOW TRIGGER
+		// Hit Window Trigger
 		//==========================================================
 		if (beat_index < beat_count)
 		{
@@ -433,7 +433,7 @@ void startGame (void)
 		}
 		
 		//==========================================================
-		// TIMING AND MISSED BEATS
+		// Timing and Missed Beats
 		//==========================================================
 		if (stage == WAITING)
 		{
@@ -510,7 +510,7 @@ void measuring(void)
 		current_score += (accuracy * multiplier);                    //scores based on accuracy.
 		
 		//==========================================================
-		// COMBOS
+		// Combos
 		//==========================================================
 		combo++;                                                     //increases the combo.
 		
@@ -553,7 +553,7 @@ void measuring(void)
 		}
 		
 		//==========================================================
-		// SEND HUD UPDATE TO PYTHON
+		// Send HUD Update to Python
 		//==========================================================
 
 		char score_buf[16];
@@ -629,7 +629,7 @@ void gameOver (void)
 	BLUE_OFF;
 	
 	//==========================================================
-	// HIGH SCORE LOGIC
+	// High Score Logic
 	//==========================================================
 	if (current_score == 0)                                      //ensures no funny business with high score system.
 	{

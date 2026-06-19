@@ -19,7 +19,7 @@
 #define POT_CHANNEL        0                           //potentiometer on ADC channel 0.
 #define PHOTO_CHANNEL      1                           //photoresistor on ADC channel 1.
 #define DARK_THRESHOLD     200                         //threshold for covered sensor (pause) -- OBSOLETE.
-#define LIGHT_THRESHOLD    200                         //threshold for uncovered sensor (resume) -- OBSOLETE.
+#define LIGHT_THRESHOLD    300                         //threshold for uncovered sensor (resume) -- OBSOLETE.
 
 //======================================================================================================================
 //                                                   Functions

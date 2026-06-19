@@ -2,7 +2,7 @@
 // Title:       timer.c
 // Author:      nathan ramos
 // Created:     5/15/2026
-// Description: Timer module for beat timing and debounce.
+// Description: Timer module for beat timing.
 //======================================================================================================================
 //======================================================================================================================
 //                                                 System Settings
