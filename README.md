@@ -131,21 +131,19 @@ graph TD
 ## 📸 Gameplay Screenshots
 
 ### Title Screen
-![Title Screen](Title%20Screen.png)
+![Title Screen](Images/Title%20Screen.png)
 
 ### Main Menu
-![Main Menu](Main%20Menu.png)
+![Main Menu](Images/Main%20Menu.png)
 
 ### Live Gameplay Board
-![Game Board](Game%20Board.png)
+![Game Board](Images/Game%20Board.png)
 
 ### High Scores Leaderboard
-![Leaderboard](Leaderboard.png)
+![Leaderboard](Images/Leaderboard.png)
 
 ### Real-Time Sensor Data
-![Sensor Data](Sensor%20Data.png)
-
----
+![Sensor Data](Images/Sensor%20Data.png)
 
 ---
 
