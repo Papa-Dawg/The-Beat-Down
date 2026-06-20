@@ -128,6 +128,27 @@ graph TD
 
 ---
 
+## 📸 Gameplay Screenshots
+
+### Title Screen
+![Title Screen](Title%20Screen.png)
+
+### Main Menu
+![Main Menu](Main%20Menu.png)
+
+### Live Gameplay Board
+![Game Board](Game%20Board.png)
+
+### High Scores Leaderboard
+![Leaderboard](Leaderboard.png)
+
+### Real-Time Sensor Data
+![Sensor Data](Sensor%20Data.png)
+
+---
+
+---
+
 ## 🚀 Installation & Setup
 
 ### Prerequisites
