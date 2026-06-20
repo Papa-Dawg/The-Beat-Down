@@ -18,7 +18,7 @@ import msvcrt        # For 'Press any key' funciton.
 #=====================================================================================================
 #                                           Definitions
 #=====================================================================================================
-PORT     = 'COM5'                          # Port that controller is connected to.
+PORT     = 'COM7'                          # Port that controller is connected to.
 BAUDRATE = 115200                          # Data transmission speed.
 SONG     = 'Goodness Gracious.mp3'         # The song that I chose for the actual game.
 INTRO    = 'intro.mp3'                     # Song played during menu screens.
